@@ -7,6 +7,8 @@ from mcculw import ul
 from mcculw.enums import ScanOptions, ChannelType, ULRange, DigitalPortType
 from mcculw.device_info import DaqDeviceInfo
 import matplotlib.pyplot as plt
+import numpy as np
+from numpy import fft
 
 
 try:
@@ -24,8 +26,9 @@ def run_example():
     dev_id_list = [317, 318]  # USB-1808 = 317, USB-1808X = 318
     board_num = 0
     # Supported PIDs for the USB-1808 Series
-    rate = 200
-    points_per_channel = 500
+    rate = 22050
+    T = 2
+    points_per_channel = rate * T
     memhandle = None
 
     try:
@@ -42,12 +45,18 @@ def run_example():
         chan_list = []
         chan_type_list = []
         gain_list = []
+        all_data = []
 
         # Analog channels must be first in the list
         
+        chan_list.append(1)
+        chan_type_list.append(ChannelType.ANALOG_DIFF)
+        gain_list.append(ULRange.BIP10VOLTS)
+        all_data.append([])
         chan_list.append(2)
         chan_type_list.append(ChannelType.ANALOG_DIFF)
         gain_list.append(ULRange.BIP10VOLTS)
+        all_data.append([])
 
         num_chans = len(chan_list)
 
@@ -96,7 +105,6 @@ def run_example():
         print(row_format.format(*labels))
 
         # Print the data
-        all_data = []
         data_index = 0
         for index in range(points_per_channel):
             display_data = [index]
@@ -114,14 +122,25 @@ def run_example():
                         '{:d}'.format(int(ctypes_array[data_index])),
                 }[chan_type_list[ch_index]]()
 
-                display_data.append(data_label)
-                all_data.append(ctypes_array[data_index])
+                # display_data.append(data_label)
+                all_data[ch_index].append(ctypes_array[data_index])
                 data_index += 1
             # Print this row
-            print(row_format.format(*display_data))
+            # print(row_format.format(*display_data))
 
-        plt.plot(all_data)
+        plt.plot(all_data[1])
         plt.show()
+        plt.plot(all_data[0])
+        plt.show()
+        [S, freq, t, ax] = plt.specgram(all_data[0], Fs=rate, NFFT=2048)
+        plt.show()
+
+        # Refine spectrogram
+        max_freq = 5000    # maximum expected received frequency 
+        freq = freq[freq <= max_freq]
+        # print(freq)
+        print(S)
+
     except Exception as e:
         print('\n', e)
     finally:
