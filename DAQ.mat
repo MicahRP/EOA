@@ -1,0 +1,52 @@
+% MATLAB Translation of Python code using MATLAB Data Acquisition Toolbox
+% and MATLAB built-in functions
+
+% Load the MATLAB Data Acquisition Toolbox
+daq.reset;
+
+% Define parameters
+rate = 22050; % Sampling rate
+T = 2; % Duration of acquisition in seconds
+points_per_channel = rate * T; % Total number of points per channel
+board_num = 0; % Board number
+
+try
+    % Configure the device
+    dev_id_list = [317, 318]; % List of device IDs (USB-1808 = 317, USB-1808X = 318)
+    daq.reset;
+    s = daq.createSession('mcc'); % Create a session for MCC (Measurement Computing) device
+    addAnalogInputChannel(s, 'Board0', 0:1, 'Voltage'); % Add analog input channels
+
+    % Set the rate and duration
+    s.Rate = rate; % Set the sampling rate
+    s.DurationInSeconds = T; % Set the duration of acquisition
+
+    % Start the acquisition
+   [data, time] = s.startForeground(); % Acquire data synchronously
+
+    % Plot the data
+    figure;
+    plot(data(:, 2)); % Plot channel 2
+    xlabel('Samples'); % Label for x-axis
+    ylabel('Voltage (V)'); % Label for y-axis
+    title('Channel 2 Data'); % Title of the plot
+
+    figure;
+    plot(data(:, 1)); % Plot channel 1
+    xlabel('Samples'); % Label for x-axis
+    ylabel('Voltage (V)'); % Label for y-axis
+    title('Channel 1 Data'); % Title of the plot
+
+    figure;
+    spectrogram(data(:, 1), 2048, [], [], rate, 'yaxis'); % Generate spectrogram for channel 1
+    title('Spectrogram of Channel 1 Data'); % Title of the plot
+
+    % Refine spectrogram
+    max_freq = 5000; % Maximum expected received frequency 
+    [~, f, t, P] = spectrogram(data(:, 1), 2048, [], [], rate, 'yaxis'); % Calculate spectrogram
+    f = f(f <= max_freq); % Filter frequency values
+    disp(P); % Display the spectrogram
+    
+catch ME
+    disp(ME); % Display any errors that occur
+end
