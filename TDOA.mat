@@ -1,0 +1,54 @@
+% MATLAB Translation of Python code using MATLAB built-in functions
+
+% Import required libraries
+import numpy as np; % Import NumPy library
+import matplotlib.pyplot as plt; % Import Matplotlib library
+
+% Define cross-correlation function
+function [lags, corr] = xcorr(x, y)
+    corr = conv(x, fliplr(y)); % Perform convolution to calculate cross-correlation
+    lags = -(length(y)-1):length(x)-1; % Define lags
+end
+
+% Define parameters
+frequency = 1000; % Frequency of the sine wave
+noisy_freq = 100; % Frequency of the noise
+num_samples = 2750; % Number of samples
+sampling_rate = 48000.0; % Sampling rate
+
+% Create sine wave and noise
+sine_wave = sin(2 * pi * frequency * (0:num_samples-1) / sampling_rate); % Generate sine wave
+sine_noise = (10 * abs(abs((0:num_samples-1) - 1250) - 1250) / 1250) .* sin(2 * pi * noisy_freq * (0:num_samples-1) / sampling_rate); % Generate noisy sine wave
+
+% Add sine wave and noise to create combined signal
+combined_signal = sine_wave + sine_noise;
+
+% Plot noise signal and noise delayed
+figure;
+subplot(2, 1, 1);
+plot(combined_signal(1:2500)); % Plot noise signal
+title('Noise Signal');
+xlabel('Time steps');
+ylabel('Amplitude');
+subplot(2, 1, 2);
+plot(combined_signal(251:end)); % Plot noise delayed
+title('Noise delayed 250 steps');
+xlabel('Time steps');
+ylabel('Amplitude');
+xlim([1, length(combined_signal(251:end))]);
+ylim([min(combined_signal(251:end)), max(combined_signal(251:end))]);
+sgtitle('Combined Signal and Delayed Noise');
+
+% Calculate and plot cross-correlation
+[lags, corr_data] = xcorr(combined_signal(1:2500), combined_signal(251:end)); % Calculate cross-correlation
+figure;
+plot(lags, corr_data); % Plot cross-correlation
+xlim([-1500, 1500]); % Set x-axis limits
+xlabel('Lags');
+ylabel('Correlation');
+title('Cross-correlation');
+hold on;
+line([0, 0], ylim, 'Color', 'red', 'LineStyle', '--'); % Plot vertical line at lag = 0
+hold off;
+
+disp(lags(find(corr_data == max(corr_data), 1))); % Display lag with maximum correlation
