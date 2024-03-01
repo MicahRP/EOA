@@ -8,6 +8,7 @@ from mcculw.enums import ScanOptions, ChannelType, ULRange, DigitalPortType
 from mcculw.device_info import DaqDeviceInfo
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy import signal
 
 # This is for writing .wav file
 from scipy.io.wavfile import write
@@ -17,6 +18,11 @@ try:
     from console_examples_util import config_first_detected_device
 except ImportError:
     from .console_examples_util import config_first_detected_device
+
+def xcorr(x, y):
+    corr = signal.correlate(x, y, mode="full")
+    lags = signal.correlation_lags(len(x), len(y), mode="full")
+    return lags, corr
 
 def run_example():
     # By default, the example detects and displays all available devices and
@@ -29,7 +35,7 @@ def run_example():
     board_num = 0
     # Supported PIDs for the USB-1808 Series
     rate = 44100
-    T = 10
+    T = 3
     points_per_channel = rate * T
     memhandle = None
 
@@ -143,21 +149,16 @@ def run_example():
 
         plt.legend(loc="upper right")            
         plt.show()
-        plt.plot(all_data[0])
-        plt.show()
-        [S, freq, t, ax] = plt.specgram(all_data[0], Fs=rate, NFFT=2048)
-        plt.show()
 
-        # Refine spectrogram
-        max_freq = 5000    # maximum expected received frequency 
-        freq = freq[freq <= max_freq]
-        # print(freq)
-        print(S)
+        for i in range(num_chans):
+            for j in range(i+1, num_chans):
+                print(f"Chanel {i}")
+                print(f"Chanel {j}")
+                [lags, conv_data] = xcorr(all_data[i],all_data[j])
+                plt.plot(lags, conv_data)
+                plt.show()
+                print(f"Delay by this many samples: {lags[np.argmax(conv_data)]}")
 
-        # Extra code for writing to a .wav file
-        data = all_data[2]
-        scaled = np.int16(data / np.max(np.abs(data)) * 32767)
-        write('test.wav', rate, scaled)
 
     except Exception as e:
         print('\n', e)
