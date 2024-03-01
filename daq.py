@@ -8,7 +8,9 @@ from mcculw.enums import ScanOptions, ChannelType, ULRange, DigitalPortType
 from mcculw.device_info import DaqDeviceInfo
 import matplotlib.pyplot as plt
 import numpy as np
-from numpy import fft
+
+# This is for writing .wav file
+from scipy.io.wavfile import write
 
 
 try:
@@ -26,8 +28,8 @@ def run_example():
     dev_id_list = [317, 318]  # USB-1808 = 317, USB-1808X = 318
     board_num = 0
     # Supported PIDs for the USB-1808 Series
-    rate = 22050
-    T = 2
+    rate = 44100
+    T = 10
     points_per_channel = rate * T
     memhandle = None
 
@@ -49,11 +51,19 @@ def run_example():
 
         # Analog channels must be first in the list
         
+        chan_list.append(0)
+        chan_type_list.append(ChannelType.ANALOG_DIFF)
+        gain_list.append(ULRange.BIP10VOLTS)
+        all_data.append([])
         chan_list.append(1)
         chan_type_list.append(ChannelType.ANALOG_DIFF)
         gain_list.append(ULRange.BIP10VOLTS)
         all_data.append([])
         chan_list.append(2)
+        chan_type_list.append(ChannelType.ANALOG_DIFF)
+        gain_list.append(ULRange.BIP10VOLTS)
+        all_data.append([])
+        chan_list.append(3)
         chan_type_list.append(ChannelType.ANALOG_DIFF)
         gain_list.append(ULRange.BIP10VOLTS)
         all_data.append([])
@@ -128,7 +138,10 @@ def run_example():
             # Print this row
             # print(row_format.format(*display_data))
 
-        plt.plot(all_data[1])
+        for i in range(num_chans):
+            plt.plot(all_data[i], label=("Channel " + str(i)))
+
+        plt.legend(loc="upper right")            
         plt.show()
         plt.plot(all_data[0])
         plt.show()
@@ -140,6 +153,11 @@ def run_example():
         freq = freq[freq <= max_freq]
         # print(freq)
         print(S)
+
+        # Extra code for writing to a .wav file
+        data = all_data[2]
+        scaled = np.int16(data / np.max(np.abs(data)) * 32767)
+        write('test.wav', rate, scaled)
 
     except Exception as e:
         print('\n', e)
