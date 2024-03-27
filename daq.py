@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 from builtins import *  # @UnusedWildImport
+import sys
 
 from ctypes import cast, POINTER, c_double
 
@@ -20,9 +21,13 @@ except ImportError:
     from .console_examples_util import config_first_detected_device
 
 def xcorr(x, y):
+    # returns actual cross-correlation array
     corr = signal.correlate(x, y, mode="full")
-    lags = signal.correlation_lags(len(x), len(y), mode="full")
-    return lags, corr
+    # returns the array of time differences
+    lags = signal.correlation_lags(x.size, y.size, mode="full")
+    # return the TDOA fo print(lags.shape)
+    tdoa = lags[np.argmax(corr)]
+    return tdoa, lags, corr
 
 def run_example():
     # By default, the example detects and displays all available devices and
@@ -35,7 +40,7 @@ def run_example():
     board_num = 0
     # Supported PIDs for the USB-1808 Series
     rate = 44100
-    T = 3
+    T = 1
     points_per_channel = rate * T
     memhandle = None
 
@@ -143,21 +148,57 @@ def run_example():
                 data_index += 1
             # Print this row
             # print(row_format.format(*display_data))
+        
+        np_data = np.empty((num_chans, points_per_channel))
+        for channel_idx in range(num_chans):
+            np_data[channel_idx] = np.asarray(all_data[channel_idx])
 
-        for i in range(num_chans):
-            plt.plot(all_data[i], label=("Channel " + str(i)))
 
-        plt.legend(loc="upper right")            
+       # convert to matrix
+        np_data = np.mat(np_data)
+
+        # de-mean data:
+        np_data = np_data - np.mean(np_data,axis=1)
+
+        plt.plot(np_data.transpose())
         plt.show()
+
+        TDOA = np.empty((num_chans,num_chans))
 
         for i in range(num_chans):
             for j in range(i+1, num_chans):
-                print(f"Chanel {i}")
-                print(f"Chanel {j}")
-                [lags, conv_data] = xcorr(all_data[i],all_data[j])
-                plt.plot(lags, conv_data)
-                plt.show()
-                print(f"Delay by this many samples: {lags[np.argmax(conv_data)]}")
+                # print(f"Channel {i}")
+                # print(f"Channel {j}")
+                [tdoa, lags, conv_data] = xcorr(np_data[i],np_data[j])
+                # plt.plot(lags, conv_data.transpose())
+                # plt.show()
+                TDOA[i,j] = tdoa
+                TDOA[j,i] = tdoa
+        
+        TDOA[TDOA < 1] = 0 
+
+        # make distances matrix
+        distances = np.array([0, 15, 30, 45])
+        one = np.ones([distances.size, distances.size])
+        distances = distances * one 
+        distances = np.abs(distances - distances.transpose())/100   # have in meters
+        # print(distances)
+
+
+        ### NEED TO GET THIS PART ###
+        # Calculate angle of arrival:
+        c = 346;    # speed of sound in air
+
+        y = (c*TDOA/distances)
+        
+        print(y)
+        theta = np.arcsin(y)
+        print(theta)
+
+        #print("before", file=sys.stderr)
+       # print("after", file=sys.stderr)
+
+
 
 
     except Exception as e:
