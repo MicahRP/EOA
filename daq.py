@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 from builtins import *  # @UnusedWildImport
+import sys
 
 from ctypes import cast, POINTER, c_double
 
@@ -8,6 +9,8 @@ from mcculw.enums import ScanOptions, ChannelType, ULRange, DigitalPortType
 from mcculw.device_info import DaqDeviceInfo
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy import signal
+from scipy import interpolate as interp
 
 # This is for writing .wav file
 from scipy.io.wavfile import write
@@ -17,6 +20,22 @@ try:
     from console_examples_util import config_first_detected_device
 except ImportError:
     from .console_examples_util import config_first_detected_device
+
+def xcorr(x, y):
+    # factor = 4
+    # print("here")
+    # # first interpolate the signals so that there are more data points (higher resolution)
+    # fx = interp.interp1d(np.arange(0,x.shape[1]),x,'quadratic')
+    # x = fx(np.arange(0,factor*x.shape[1]))
+    # y = interp.interp1d(y.shape[1],factor*y.shape[1],'quadratic')
+    # print("now here")
+    # returns actual cross-correlation array
+    corr = signal.correlate(x, y, mode="full")
+    # returns the array of time differences
+    lags = signal.correlation_lags(x.size, y.size, mode="full")
+    # return the TDOA fo print(lags.shape) in samples
+    tdoa = lags[np.argmax(corr)]
+    return tdoa, lags, corr
 
 def run_example():
     # By default, the example detects and displays all available devices and
@@ -29,7 +48,8 @@ def run_example():
     board_num = 0
     # Supported PIDs for the USB-1808 Series
     rate = 44100
-    T = 10
+    T = 2
+    window = int(rate * T)
     points_per_channel = rate * T
     memhandle = None
 
@@ -137,27 +157,124 @@ def run_example():
                 data_index += 1
             # Print this row
             # print(row_format.format(*display_data))
+        
+        np_data = np.empty((num_chans, points_per_channel))
+        for channel_idx in range(num_chans):
+            np_data[channel_idx] = np.asarray(all_data[channel_idx])
+
+
+       # convert to matrix
+        np_data = np.mat(np_data)
+
+        # de-mean data:
+        np_data = np_data - np.mean(np_data,axis=1)
+
+
+        # plt.plot(np_data.transpose())
+        # plt.show()
+
+        TDOA = np.empty((num_chans,num_chans))
 
         for i in range(num_chans):
-            plt.plot(all_data[i], label=("Channel " + str(i)))
+            for j in range(i+1, num_chans):
+                # print(f"Channel {i}")
+                # print(f"Channel {j}")
+                tdoas = np.array([])
+                for idx in range(0, (T * rate), window):
+                    [tdoa, lags, conv_data] = xcorr(np_data[i].flat[idx:idx+window],np_data[j].flat[idx:idx+window])
+                    tdoas = np.append(tdoas, tdoa)
+                # plt.plot(lags, conv_data.transpose())
+                # plt.show()
+                print(tdoas)
+                tdoa = np.average(tdoas)
+                print(tdoa)
+                TDOA[i,j] = tdoa/rate
+                TDOA[j,i] = -(tdoa/rate)
+        
+        print(TDOA)
 
-        plt.legend(loc="upper right")            
-        plt.show()
-        plt.plot(all_data[0])
-        plt.show()
-        [S, freq, t, ax] = plt.specgram(all_data[0], Fs=rate, NFFT=2048)
-        plt.show()
+        # make distances matrix
+        distances = np.array([0, 15, 30, 45])
+        one = np.ones([distances.size, distances.size])
+        distances = distances * one 
+        distances = np.abs(distances - distances.transpose())/100   # have in meters
+        print(distances)
 
-        # Refine spectrogram
-        max_freq = 5000    # maximum expected received frequency 
-        freq = freq[freq <= max_freq]
-        # print(freq)
-        print(S)
 
-        # Extra code for writing to a .wav file
-        data = all_data[2]
-        scaled = np.int16(data / np.max(np.abs(data)) * 32767)
-        write('test.wav', rate, scaled)
+        # Calculate angle of arrival:
+        c = 343;    # speed of sound in air
+        y = (c*TDOA/distances)
+
+        theta = np.arcsin(y) * 180 / np.pi  # in degrees
+
+        # Store the signs from angle of arrival to identify which side source is from -- don't 
+        signs = np.copy(theta)
+        signs[signs > 0] = 1
+        signs[signs < 0] = -1
+
+
+        # Fix the signs of the AOAs to get uniform *direction* of arrival
+        for i in range(len(theta)):
+            for j in range(len(theta[i])):
+                if j < i:
+                    theta[i][j]=(-1) * theta[i][j]
+
+
+        # Now average the AOA as seen from each microphone element
+        avg_theta = np.empty(np.shape(y)[0])
+        for index, row in enumerate(theta):
+            sum = 0
+            items = 0
+            for elem in row:
+                if not np.isnan(elem) and not np.isinf(elem):
+                    sum += elem
+                    items += 1
+            
+            avg_theta[index] = sum/items
+    
+        print("The AOA vector is: {}".format(avg_theta))
+
+        # PLOT THE AOA as a line-of-sight from array
+        # unpack the first point
+        fig, ax1 = plt.subplots()  
+        
+        line_length = 1000  # 10 meters
+        for idx, x in enumerate(range(-23,23,15)):
+
+            y = 0
+
+            # find the end point
+            endy = y + line_length * np.sin(np.radians(avg_theta[3-idx]+90))
+            endx = x + line_length * np.cos(np.radians(avg_theta[3-idx]+90))
+            # print("x at {}, is: {}".format(idx,x))
+            
+            # plot the points
+            ax1.plot([x, endx], [y, endy])
+            # ax2.plot([x, endx], [y, endy])
+
+        # add twin axis so we can show left and right labels
+        ax2 = ax1.twinx()
+        ax1.set_xlabel('Base of Array (cm)')    
+        ax1.set_ylabel('Left')
+        ax2.set_ylabel('Right')
+
+        # plot basic cardinals from center:
+        x = 0
+        end45 = [x+line_length * np.cos(np.radians(45)), y + line_length*np.sin(np.radians(45))]
+        end45neg = [x+line_length * np.cos(np.radians(45 + 90)), y + line_length*np.sin(np.radians(90+45))]
+        end90 = [x+line_length * np.cos(np.radians(90)), y + line_length*np.sin(np.radians(90))]
+        ax1.plot([x,end45[0]],[y,end45[1]],'k--')
+        ax1.plot([x,end45neg[0]],[y,end45neg[1]],'k--')
+        ax1.plot([x,end90[0]],[y,end90[1]],'k--')
+
+        # set bounds and show
+        plt.ylim([-5, line_length]) 
+        plt.xlim([-line_length, line_length])
+        plt.title("Microphone Array AOA View")
+        plt.show()
+        #print("before", file=sys.stderr)
+       # print("after", file=sys.stderr)
+       
 
     except Exception as e:
         print('\n', e)
